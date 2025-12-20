@@ -1,11 +1,12 @@
-// backend/models/Participant.js
+// models/Participant.js - UPDATED FOR DJANGO COLLECTION
 const mongoose = require('mongoose');
 
 const participantSchema = new mongoose.Schema({
+    id: Number,  // Django's auto-increment ID
     event: {
         type: String,
-        enum: ['InnovWEB', 'SensorShowDown', 'IdeaArena', 'Error Erase'],
-        required: true
+        required: true,
+        enum: ['InnovWEB', 'SensorShowDown', 'IdeaArena', 'Error Erase']
     },
     team_code: {
         type: String,
@@ -31,7 +32,6 @@ const participantSchema = new mongoose.Schema({
     email: {
         type: String,
         required: true,
-        unique: true,
         lowercase: true,
         trim: true
     },
@@ -45,19 +45,34 @@ const participantSchema = new mongoose.Schema({
     },
     idea_description: String,
     idea_file_url: String,
+    // Quiz fields (will be added by Node.js)
     quiz_taken: {
         type: Boolean,
         default: false
     },
-    quiz_score: Number,
+    quiz_score: {
+        type: Number,
+        min: 0,
+        max: 100
+    },
     quiz_start_time: Date,
     quiz_end_time: Date,
     quiz_answers: [{
         question_id: mongoose.Schema.Types.ObjectId,
         selected_option: Number,
         is_correct: Boolean,
-        time_taken: Number // in seconds
+        time_taken: Number
     }]
+}, {
+    collection: 'events_participant', // Use Django's collection
+    timestamps: true
 });
+
+// Create indexes
+participantSchema.index({ email: 1 }, { unique: true });
+participantSchema.index({ team_code: 1 }, { unique: true });
+participantSchema.index({ event: 1 });
+participantSchema.index({ quiz_taken: 1 });
+participantSchema.index({ quiz_score: -1 });
 
 module.exports = mongoose.model('Participant', participantSchema);
