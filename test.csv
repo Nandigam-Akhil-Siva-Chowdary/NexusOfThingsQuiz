@@ -1,0 +1,3 @@
+question,option1,option2,option3,option4,correct_option,explanation,difficulty,category,points,time_limit
+"What is React?","JavaScript library","CSS framework","Database","Operating System",1,"React is a JS library for building UIs","easy","Web Development",10,30
+"What is MongoDB?","Relational DB","NoSQL DB","Graph DB","Time-series DB",2,"MongoDB is a document-based NoSQL database","medium","Database",15,45
