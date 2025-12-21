@@ -1,0 +1,26 @@
+# render.yaml - Render configuration
+services:
+  - type: web
+    name: nexus-quiz
+    env: node
+    buildCommand: |
+      echo "🚀 Starting build process..."
+      echo "📦 Installing root dependencies..."
+      npm install
+      echo "🔧 Building frontend..."
+      cd frontend && npm install && npm run build
+      echo "⚙️ Installing backend dependencies..."
+      cd ../backend && npm install
+      echo "✅ Build complete!"
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: PORT
+        value: 10000
+    healthCheckPath: /api/health
+    autoDeploy: true
+    regions:
+      - oregon  # Free tier available in Oregon
