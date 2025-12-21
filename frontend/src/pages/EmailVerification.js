@@ -1,4 +1,5 @@
 // frontend/src/pages/EmailVerification.js
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -27,7 +28,7 @@ function EmailVerification() {
     setError('');
 
     try {
-      const response = await axios.post(`${API_URL}/auth/verify-email`, { email });
+      const response = await axios.post(`${API_URL}/api/auth/verify-email`, { email });
       
       if (response.data.success) {
         // Store participant info in session storage

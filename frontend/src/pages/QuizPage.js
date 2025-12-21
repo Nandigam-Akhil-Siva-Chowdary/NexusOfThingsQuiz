@@ -24,7 +24,7 @@ import {
 } from '@mui/material';
 import { Timer, CheckCircle, ErrorOutline } from '@mui/icons-material';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 function QuizPage() {
   const [questions, setQuestions] = useState([]);
@@ -41,19 +41,29 @@ function QuizPage() {
   const navigate = useNavigate();
 
   // Function to exit fullscreen safely
-  const exitFullscreen = () => {
+  // Function to exit fullscreen safely
+  const exitFullscreen = async () => {
     try {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      } else if (document.mozCancelFullScreen) {
-        document.mozCancelFullScreen();
-      } else if (document.msExitFullscreen) {
-        document.msExitFullscreen();
+      // ONLY attempt to exit if there is an active fullscreen element
+      const fullscreenElement = document.fullscreenElement || 
+                                 document.webkitFullscreenElement || 
+                                 document.mozFullScreenElement || 
+                                 document.msFullscreenElement;
+
+      if (fullscreenElement) {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          await document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+          await document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+          await document.msExitFullscreen();
+        }
       }
     } catch (error) {
-      console.warn('Error exiting fullscreen:', error);
+      // If the document is not active, this will catch the error instead of crashing the app
+      console.warn('Safe exit: Fullscreen exit skipped or document not active.');
     }
   };
 
@@ -67,7 +77,7 @@ function QuizPage() {
         time_spent: 30 // This should be calculated per question in real implementation
       }));
 
-      const response = await axios.post(`${API_URL}/quiz/submit`, {
+      const response = await axios.post(`${API_URL}/api/quiz/submit`, {
         session_id: sessionId,
         answers
       });
@@ -99,7 +109,7 @@ function QuizPage() {
       const participantInfo = JSON.parse(sessionStorage.getItem('participantInfo') || '{}');
       const email = sessionStorage.getItem('email');
 
-      const response = await axios.post(`${API_URL}/quiz/start`, {
+      const response = await axios.post(`${API_URL}/api/quiz/start`, {
         email,
         event: participantInfo.event
       });

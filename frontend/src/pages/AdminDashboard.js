@@ -33,7 +33,7 @@ import {
 } from '@mui/material';
 import { Upload, BarChart, People, Quiz, Refresh, Download, FilterList } from '@mui/icons-material';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 function AdminDashboard() {
   const navigate = useNavigate();
@@ -84,7 +84,7 @@ function AdminDashboard() {
   const loadStats = async () => {
     try {
       // Get participants with quiz scores
-      const response = await axios.get(`${API_URL}/auth/participants`);
+      const response = await axios.get(`${API_URL}/api/auth/participants`);
       const allParticipants = response.data.data || [];
       
       // Calculate stats
@@ -109,7 +109,7 @@ function AdminDashboard() {
 
   const loadParticipants = async () => {
     try {
-      const response = await axios.get(`${API_URL}/auth/participants`);
+      const response = await axios.get(`${API_URL}/api/auth/participants`);
       const allParticipants = response.data.data || [];
       
       // Filter based on selected event
@@ -133,7 +133,7 @@ function AdminDashboard() {
 
   const loadQuestions = async () => {
     try {
-      const response = await axios.get(`${API_URL}/admin/questions`);
+      const response = await axios.get(`${API_URL}/api/admin/questions`);
       setQuestions(response.data.data || []);
     } catch (error) {
       console.error('Failed to load questions:', error);
