@@ -143,6 +143,7 @@ router.post('/submit', async (req, res) => {
     }
 
     let score = 0;
+    let totalPossibleScore = 0;
     let correctAnswers = 0;
     const detailedAnswers = [];
 
@@ -151,11 +152,14 @@ router.post('/submit', async (req, res) => {
 
       if (!question) continue;
 
+      const points = question.points || 10;
+      totalPossibleScore += points;
+
       const isCorrect =
         question.correct_option === answer.selected_option;
 
       if (isCorrect) {
-        score += question.points || 10;
+        score += points;
         correctAnswers++;
       }
 
@@ -167,18 +171,15 @@ router.post('/submit', async (req, res) => {
       });
     }
 
-    const totalPossibleScore =
-      (session.total_questions || answers.length) * 10;
-
-    const percentageScore = Math.round(
-      (score / totalPossibleScore) * 100
-    );
+    const percentageScore = totalPossibleScore > 0 
+      ? Math.round((score / totalPossibleScore) * 100)
+      : 0;
 
     // Update session
     session.end_time = new Date();
     session.questions_attempted = answers.length;
     session.correct_answers = correctAnswers;
-    session.score = percentageScore;
+    session.score = score;
     session.time_taken = Math.floor(
       (session.end_time - session.start_time) / 1000
     );
@@ -197,13 +198,14 @@ router.post('/submit', async (req, res) => {
     });
 
     console.log(
-      `✅ Quiz submitted | Session: ${session_id} | Score: ${percentageScore}%`
+      `✅ Quiz submitted | Session: ${session_id} | Score: ${score}/${totalPossibleScore} (${percentageScore}%)`
     );
 
     return res.status(200).json({
       success: true,
-      score: percentageScore,
-      raw_score: score,
+      score: score,
+      total_possible_score: totalPossibleScore,
+      percentage_score: percentageScore,
       total_questions: session.total_questions,
       questions_attempted: answers.length,
       correct_answers: correctAnswers,

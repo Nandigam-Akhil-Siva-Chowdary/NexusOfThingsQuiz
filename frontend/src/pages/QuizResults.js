@@ -19,7 +19,7 @@ function QuizResults() {
   const results = JSON.parse(sessionStorage.getItem('quizResults') || '{}');
   const participantInfo = JSON.parse(sessionStorage.getItem('participantInfo') || '{}');
 
-  const scorePercentage = (results.score / (results.total_questions * 10)) * 100;
+  const scorePercentage = results.percentage_score || 0;
 
   const getScoreColor = () => {
     if (scorePercentage >= 80) return 'success.main';
@@ -58,7 +58,7 @@ function QuizResults() {
               <Divider sx={{ my: 2 }} />
               <Box sx={{ mb: 2 }}>
                 <Typography variant="h2" color="primary" align="center">
-                  {results.score}/{results.total_questions * 10}
+                  {results.score}/{results.total_possible_score}
                 </Typography>
                 <Typography align="center" color="textSecondary">
                   Total Score
