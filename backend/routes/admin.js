@@ -132,38 +132,48 @@ router.post('/upload-questions', upload.single('csvFile'), async (req, res) => {
             .pipe(csv())
             .on('data', (row) => {
                 console.log('Raw CSV row:', row); // Debug log
-                
-                // FIX: Map CSV column names correctly
+
+                // Read raw values (support both header styles)
+                const rawQuestionText = row.question || row['question'] || '';
+                const rawOptions = [
+                    row.option1 || row['option1'] || '',
+                    row.option2 || row['option2'] || '',
+                    row.option3 || row['option3'] || '',
+                    row.option4 || row['option4'] || ''
+                ];
+
+                // Parse numeric fields safely (use base 10 and handle NaN)
+                const rawCorrect = (row.correct_option || row['correct_option']);
+                const parsedCorrect = Number.parseInt(rawCorrect, 10);
+                const rawPoints = (row.points || row['points']);
+                const parsedPoints = Number.parseInt(rawPoints, 10);
+                const rawTime = (row.time_limit || row['time_limit']);
+                const parsedTime = Number.parseInt(rawTime, 10);
+
+                // Build question object with sane defaults; do NOT assign possible NaN values
                 const question = {
                     event: event,
-                    question_text: row.question || row['question'] || '',
-                    options: [
-                        row.option1 || row['option1'] || '',
-                        row.option2 || row['option2'] || '',
-                        row.option3 || row['option3'] || '',
-                        row.option4 || row['option4'] || ''
-                    ],
-                    correct_option: parseInt(row.correct_option || row['correct_option'] || 0),
-                    explanation: row.explanation || row['explanation'] || '',
+                    question_text: rawQuestionText.trim(),
+                    options: rawOptions.map(o => (o || '').trim()),
+                    correct_option: 0, // will set below after validation
+                    explanation: (row.explanation || row['explanation'] || '').trim(),
                     difficulty: row.difficulty || 'medium',
                     category: row.category || '',
-                    points: parseInt(row.points) || 10,
-                    time_limit: parseInt(row.time_limit) || 30
+                    points: Number.isFinite(parsedPoints) ? parsedPoints : 10,
+                    time_limit: Number.isFinite(parsedTime) ? parsedTime : 30
                 };
 
                 // Validate required fields
                 if (!question.question_text || question.options.some(opt => !opt)) {
-                    console.warn('⚠️ Skipping invalid question:', question);
+                    console.warn('⚠️ Skipping invalid question:', question.question_text || '[no text]');
                     return;
                 }
 
-                // Ensure correct_option is valid (0-3)
-                // CSV uses 1-4, we need to convert to 0-3
-                let csvCorrectOption = parseInt(row.correct_option || row['correct_option'] || 0);
-                if (csvCorrectOption >= 1 && csvCorrectOption <= 4) {
-                    question.correct_option = csvCorrectOption - 1; // Convert to 0-indexed
-                } else if (question.correct_option < 0 || question.correct_option > 3) {
-                    console.warn('⚠️ Invalid correct_option, defaulting to 0:', question.correct_option);
+                // CSV correct_option expected as 1-4; convert to 0-3
+                if (Number.isFinite(parsedCorrect) && parsedCorrect >= 1 && parsedCorrect <= 4) {
+                    question.correct_option = parsedCorrect - 1;
+                } else {
+                    console.warn('⚠️ Invalid or missing correct_option, defaulting to 0 for question:', question.question_text.substring(0, 50));
                     question.correct_option = 0;
                 }
 

@@ -75,4 +75,8 @@ participantSchema.index({ event: 1 });
 participantSchema.index({ quiz_taken: 1 });
 participantSchema.index({ quiz_score: -1 });
 
-module.exports = mongoose.model('Participant', participantSchema);
+module.exports = mongoose.model(
+  "Participant",              // ✅ Model name (used in ref/populate)
+  participantSchema,
+  "events_participant"        // ✅ Django collection name
+);

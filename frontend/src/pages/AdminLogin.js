@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import { AdminPanelSettings, LockOpen } from '@mui/icons-material';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:10000/api';
 
 function AdminLogin() {
   const [username, setUsername] = useState('');
@@ -223,7 +223,7 @@ function AdminLogin() {
             }}
           />
           <Typography variant="caption" color="textSecondary">
-            Server: localhost:5000
+            Server: localhost:10000
           </Typography>
         </Box>
       </Paper>

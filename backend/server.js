@@ -1,4 +1,4 @@
-// backend/server.js - PRODUCTION READY
+// backend/server.js - PRODUCTION READY (FIXED VERSION)
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -33,10 +33,11 @@ mongoose.connect(process.env.MONGODB_URI, {
   console.log('Running without database connection...');
 });
 
+// ============ IMPORTANT FIX: Mount ALL API routes under /api ============
 // Import routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/quiz', require('./routes/quiz'));
-app.use('/api/admin', require('./routes/admin'));
+app.use('/api/admin', require('./routes/admin')); // Now correctly at /api/admin
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -78,4 +79,8 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`📌 API Endpoints:`);
+  console.log(`   - Auth: http://localhost:${PORT}/api/auth`);
+  console.log(`   - Quiz: http://localhost:${PORT}/api/quiz`);
+  console.log(`   - Admin: http://localhost:${PORT}/api/admin`);
 });

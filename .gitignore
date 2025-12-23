@@ -12,10 +12,16 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+backend/.env
+backend/.env.development
+frontend/.env.production
+
 # Build outputs
 frontend/build/
 backend/uploads/
 
+frontend/node_modules/
+backend/node_modules/
 # IDE files
 .vscode/
 .idea/
@@ -25,3 +31,4 @@ backend/uploads/
 # OS files
 .DS_Store
 Thumbs.db
+

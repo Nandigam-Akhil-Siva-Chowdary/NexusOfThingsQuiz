@@ -14,7 +14,7 @@ import {
   CircularProgress
 } from '@mui/material';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:10000/api';
 
 function EmailVerification() {
   const [email, setEmail] = useState('');
@@ -28,7 +28,7 @@ function EmailVerification() {
     setError('');
 
     try {
-      const response = await axios.post(`${API_URL}/api/auth/verify-email`, { email });
+      const response = await axios.post(`${API_URL}/auth/verify-email`, { email });
       
       if (response.data.success) {
         // Store participant info in session storage

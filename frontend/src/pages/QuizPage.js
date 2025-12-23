@@ -1,5 +1,4 @@
-// frontend/src/pages/QuizPage.js - FIXED VERSION
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Countdown from 'react-countdown';
@@ -20,341 +19,265 @@ import {
   Dialog,
   DialogActions,
   DialogContent,
-  DialogTitle
+  DialogTitle,
+  IconButton,
+  Tooltip
 } from '@mui/material';
-import { Timer, CheckCircle, ErrorOutline } from '@mui/icons-material';
+import {
+  Timer,
+  ArrowBack,
+  ArrowForward,
+  CheckCircle,
+  Fullscreen,
+  FullscreenExit,
+  ExitToApp
+} from '@mui/icons-material';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:10000';
 
 function QuizPage() {
+  const navigate = useNavigate();
+
   const [questions, setQuestions] = useState([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [quizStarted, setQuizStarted] = useState(false);
   const [quizCompleted, setQuizCompleted] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(1200); // 20 minutes
+  const [timeLeft, setTimeLeft] = useState(600);
   const [sessionId, setSessionId] = useState('');
-  const timerRef = useRef(null);
-  const navigate = useNavigate();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [participantName, setParticipantName] = useState('');
 
-  // Function to exit fullscreen safely
-  // Function to exit fullscreen safely
+  const timerRef = useRef(null);
+  const startInitiatedRef = useRef(false); // 🔐 one-time guard
+
+  /* ---------------- FULLSCREEN ---------------- */
+
+  const enterFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      }
+    } catch (e) {
+      console.warn('Fullscreen blocked');
+    }
+  };
+
   const exitFullscreen = async () => {
     try {
-      // ONLY attempt to exit if there is an active fullscreen element
-      const fullscreenElement = document.fullscreenElement || 
-                                 document.webkitFullscreenElement || 
-                                 document.mozFullScreenElement || 
-                                 document.msFullscreenElement;
-
-      if (fullscreenElement) {
-        if (document.exitFullscreen) {
-          await document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
-          await document.webkitExitFullscreen();
-        } else if (document.mozCancelFullScreen) {
-          await document.mozCancelFullScreen();
-        } else if (document.msExitFullscreen) {
-          await document.msExitFullscreen();
-        }
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
       }
-    } catch (error) {
-      // If the document is not active, this will catch the error instead of crashing the app
-      console.warn('Safe exit: Fullscreen exit skipped or document not active.');
-    }
+      setIsFullscreen(false);
+    } catch {}
   };
 
-  // Function to handle quiz submission
-  const handleSubmitQuiz = async () => {
-    try {
-      // Prepare answers for submission
-      const answers = Object.entries(selectedAnswers).map(([index, option]) => ({
-        question_id: questions[parseInt(index)]._id,
-        selected_option: option,
-        time_spent: 30 // This should be calculated per question in real implementation
-      }));
-
-      const response = await axios.post(`${API_URL}/api/quiz/submit`, {
-        session_id: sessionId,
-        answers
-      });
-
-      if (response.data.success) {
-        // Store results
-        sessionStorage.setItem('quizResults', JSON.stringify(response.data));
-        setQuizCompleted(true);
-        
-        // Exit fullscreen after delay
-        setTimeout(() => {
-          exitFullscreen();
-          navigate('/results');
-        }, 1000);
-      }
-    } catch (err) {
-      setError('Failed to submit quiz. Please try again.');
-    }
-  };
-
-  // Function called when time is up
-  const handleTimeUp = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    handleSubmitQuiz();
-  };
+  /* ---------------- START QUIZ ---------------- */
 
   const startQuiz = async () => {
+    if (startInitiatedRef.current) return; // ✅ BLOCK DUPLICATES
+    startInitiatedRef.current = true;
+
+    setLoading(true);
+    setError('');
+
     try {
-      const participantInfo = JSON.parse(sessionStorage.getItem('participantInfo') || '{}');
+      const participantInfo = JSON.parse(
+        sessionStorage.getItem('participantInfo') || '{}'
+      );
       const email = sessionStorage.getItem('email');
 
-      const response = await axios.post(`${API_URL}/api/quiz/start`, {
-        email,
+      if (!email || !participantInfo.event) {
+        throw new Error('Missing participant info');
+      }
+
+      const res = await axios.post(`${API_URL}/api/quiz/start`, {
+        email: email.toLowerCase().trim(),
         event: participantInfo.event
       });
 
-      if (response.data.success) {
-        setQuestions(response.data.questions);
-        setSessionId(response.data.session_id);
-        setQuizStarted(true);
-        
-        // Start timer
-        timerRef.current = setInterval(() => {
-          setTimeLeft(prev => {
-            if (prev <= 1) {
-              handleTimeUp();
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      }
+      setQuestions(res.data.questions || []);
+      setSessionId(res.data.session_id);
+      setParticipantName(res.data.participant_name || 'Participant');
+      setTimeLeft(res.data.total_time || 600);
+      setQuizStarted(true);
+
+      timerRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current);
+            handleSubmitQuiz();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to start quiz. Please try again.');
+      setError(err.message || 'Failed to start quiz');
+      startInitiatedRef.current = false;
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    startQuiz();
-    
-    // SAFE fullscreen change handler
-    const handleFullscreenChange = () => {
-      try {
-        const isFullscreen = document.fullscreenElement || 
-                            document.webkitFullscreenElement ||
-                            document.mozFullScreenElement ||
-                            document.msFullscreenElement;
-        
-        if (!isFullscreen && quizStarted && !quizCompleted) {
-          console.log('User exited fullscreen during quiz');
-          // Don't force re-enter fullscreen - just warn
-          setError('You exited fullscreen mode. Please stay in fullscreen for best experience.');
-        }
-      } catch (error) {
-        console.warn('Fullscreen change error:', error);
-      }
-    };
-    
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-    
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
-      
-      if (timerRef.current) clearInterval(timerRef.current);
-      
-      // Exit fullscreen when component unmounts
-      exitFullscreen();
-    };
-  }, [quizStarted, quizCompleted]);
+  /* ---------------- SUBMIT ---------------- */
 
-  const handleAnswerSelect = (questionIndex, optionIndex) => {
-    setSelectedAnswers(prev => ({
-      ...prev,
-      [questionIndex]: optionIndex
+  const handleSubmitQuiz = useCallback(async () => {
+    setShowSubmitDialog(false);
+
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    const answers = Object.entries(selectedAnswers).map(([idx, opt]) => ({
+      question_id: questions[idx]?._id,
+      selected_option: opt,
+      time_spent: 30
     }));
-  };
 
-  const handleNext = () => {
-    if (currentQuestion < questions.length - 1) {
-      setCurrentQuestion(currentQuestion + 1);
-    } else {
-      setShowSubmitDialog(true);
-    }
-  };
+    const res = await axios.post(`${API_URL}/api/quiz/submit`, {
+      session_id: sessionId,
+      answers
+    });
 
-  const handlePrevious = () => {
-    if (currentQuestion > 0) {
-      setCurrentQuestion(currentQuestion - 1);
-    }
-  };
+    sessionStorage.setItem('quizResults', JSON.stringify(res.data));
+    setQuizCompleted(true);
+
+    setTimeout(async () => {
+      await exitFullscreen();
+      navigate('/results');
+    }, 2000);
+  }, [questions, selectedAnswers, sessionId, navigate]);
+
+  /* ---------------- CLEANUP ---------------- */
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      // ❌ DO NOT reset startInitiatedRef here
+    };
+  }, []);
+
+  /* ---------------- UI STATES ---------------- */
+
+  if (!quizStarted && !loading) {
+    return (
+      <Container sx={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h5" gutterBottom>
+            Ready to Start Quiz?
+          </Typography>
+          <Button
+            variant="contained"
+            size="large"
+            onClick={async () => {
+              await enterFullscreen(); // ✅ USER GESTURE
+              startQuiz();
+            }}
+          >
+            Start Quiz
+          </Button>
+        </Paper>
+      </Container>
+    );
+  }
 
   if (loading) {
     return (
-      <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <Container sx={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <CircularProgress />
-        <Typography sx={{ ml: 2 }}>Loading Quiz...</Typography>
-      </Container>
-    );
-  }
-
-  if (error) {
-    return (
-      <Container sx={{ mt: 8 }}>
-        <Alert severity="error">{error}</Alert>
-        <Button onClick={() => navigate('/verify-email')} sx={{ mt: 2 }}>
-          Go Back
-        </Button>
-      </Container>
-    );
-  }
-
-  if (!quizStarted) {
-    return (
-      <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-        <Typography sx={{ ml: 2 }}>Starting Quiz...</Typography>
       </Container>
     );
   }
 
   const currentQ = questions[currentQuestion];
   const progress = ((currentQuestion + 1) / questions.length) * 100;
+  const answeredCount = Object.keys(selectedAnswers).length;
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="lg" sx={{ py: 3 }}>
       {quizCompleted && <Confetti />}
-      
-      {/* Quiz Header */}
-      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h5" color="primary">
-            Question {currentQuestion + 1} of {questions.length}
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Timer sx={{ mr: 1 }} />
-            <Typography variant="h6" color="error">
-              <Countdown 
-                date={Date.now() + timeLeft * 1000}
-                renderer={({ minutes, seconds }) => (
-                  <span>{minutes}:{seconds < 10 ? '0' : ''}{seconds}</span>
-                )}
-              />
-            </Typography>
+
+      {/* HEADER */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Box display="flex" justifyContent="space-between">
+          <Typography variant="h6">{participantName}</Typography>
+
+          <Box display="flex" gap={2}>
+            <IconButton onClick={isFullscreen ? exitFullscreen : enterFullscreen}>
+              {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+            </IconButton>
+
+            <Box display="flex" alignItems="center">
+              <Timer sx={{ mr: 1 }} />
+              <Countdown date={Date.now() + timeLeft * 1000} />
+            </Box>
+
+            <IconButton color="error" onClick={() => navigate('/verify-email')}>
+              <ExitToApp />
+            </IconButton>
           </Box>
         </Box>
-        <LinearProgress 
-          variant="determinate" 
-          value={progress} 
-          sx={{ mt: 2, height: 8, borderRadius: 4 }}
-        />
-        {error && (
-          <Alert severity="warning" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
-        )}
+
+        <LinearProgress value={progress} variant="determinate" sx={{ mt: 2 }} />
       </Paper>
 
-      {/* Question */}
-      <Paper elevation={3} sx={{ p: 4, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          {currentQ.question_text}
-        </Typography>
-        
-        <FormControl component="fieldset" sx={{ width: '100%', mt: 3 }}>
-          <RadioGroup
-            value={selectedAnswers[currentQuestion] ?? ''}
-            onChange={(e) => handleAnswerSelect(currentQuestion, parseInt(e.target.value))}
-          >
-            {currentQ.options.map((option, index) => (
-              <Paper 
-                key={index} 
-                elevation={1} 
-                sx={{ 
-                  p: 2, 
-                  mb: 2,
-                  border: selectedAnswers[currentQuestion] === index ? '2px solid' : '1px solid',
-                  borderColor: selectedAnswers[currentQuestion] === index ? 'primary.main' : 'divider',
-                  borderRadius: 1,
-                  cursor: 'pointer',
-                  '&:hover': {
-                    bgcolor: 'action.hover'
-                  }
-                }}
-                onClick={() => handleAnswerSelect(currentQuestion, index)}
-              >
-                <FormControlLabel
-                  value={index.toString()}
-                  control={<Radio />}
-                  label={
-                    <Typography variant="body1">
-                      {String.fromCharCode(65 + index)}. {option}
-                    </Typography>
-                  }
-                  sx={{ width: '100%', m: 0 }}
-                />
-              </Paper>
-            ))}
-          </RadioGroup>
-        </FormControl>
+      {/* QUESTION */}
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6">{currentQ?.question_text}</Typography>
+
+        <RadioGroup
+          value={selectedAnswers[currentQuestion] ?? ''}
+          onChange={(e) =>
+            setSelectedAnswers(p => ({ ...p, [currentQuestion]: Number(e.target.value) }))
+          }
+        >
+          {currentQ?.options.map((opt, idx) => (
+            <FormControlLabel
+              key={idx}
+              value={idx}
+              control={<Radio />}
+              label={opt}
+            />
+          ))}
+        </RadioGroup>
       </Paper>
 
-      {/* Navigation */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+      {/* NAV */}
+      <Box mt={3} display="flex" justifyContent="space-between">
         <Button
-          variant="outlined"
-          onClick={handlePrevious}
           disabled={currentQuestion === 0}
+          onClick={() => setCurrentQuestion(p => p - 1)}
+          startIcon={<ArrowBack />}
         >
           Previous
         </Button>
-        
-        <Box>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={() => setShowSubmitDialog(true)}
-            sx={{ mr: 2 }}
-          >
-            Submit Quiz
-          </Button>
-          
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleNext}
-          >
-            {currentQuestion === questions.length - 1 ? 'Review' : 'Next'}
-          </Button>
-        </Box>
+
+        <Button
+          variant="contained"
+          onClick={
+            currentQuestion === questions.length - 1
+              ? () => setShowSubmitDialog(true)
+              : () => setCurrentQuestion(p => p + 1)
+          }
+          endIcon={<ArrowForward />}
+        >
+          {currentQuestion === questions.length - 1 ? 'Submit' : 'Next'}
+        </Button>
       </Box>
 
-      {/* Submit Confirmation Dialog */}
-      <Dialog open={showSubmitDialog} onClose={() => setShowSubmitDialog(false)}>
-        <DialogTitle>Submit Quiz</DialogTitle>
+      {/* SUBMIT DIALOG */}
+      <Dialog open={showSubmitDialog}>
+        <DialogTitle>Submit Quiz?</DialogTitle>
         <DialogContent>
-          <Typography>
-            Are you sure you want to submit your quiz? You cannot change answers after submission.
-          </Typography>
-          <Typography sx={{ mt: 2, color: 'text.secondary' }}>
-            Questions answered: {Object.keys(selectedAnswers).length}/{questions.length}
-          </Typography>
-          <Typography variant="body2" sx={{ mt: 2, color: 'warning.main' }}>
-            Note: After submission, you will be redirected to results page.
-          </Typography>
+          Answered {answeredCount} / {questions.length}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowSubmitDialog(false)}>Cancel</Button>
-          <Button onClick={handleSubmitQuiz} variant="contained" color="primary">
-            Submit Quiz
+          <Button variant="contained" onClick={handleSubmitQuiz}>
+            Submit
           </Button>
         </DialogActions>
       </Dialog>

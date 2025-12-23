@@ -1,4 +1,4 @@
-// AdminDashboard.js - FIXED VERSION WITH REAL DATA
+// frontend/src/pages/AdminDashboard.js - COMPLETE FIXED VERSION
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -33,7 +33,8 @@ import {
 } from '@mui/material';
 import { Upload, BarChart, People, Quiz, Refresh, Download, FilterList } from '@mui/icons-material';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// Use environment variable for API URL
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:10000/api';
 
 function AdminDashboard() {
   const navigate = useNavigate();
@@ -45,6 +46,7 @@ function AdminDashboard() {
     quizTaken: 0,
     averageScore: 0,
     topScore: 0,
+    totalQuestions: 0,
     loading: true
   });
   const [participants, setParticipants] = useState([]);
@@ -53,6 +55,7 @@ function AdminDashboard() {
   const [openDialog, setOpenDialog] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [error, setError] = useState('');
+  const [questionsByEvent, setQuestionsByEvent] = useState([]);
 
   useEffect(() => {
     // Check authentication
@@ -75,7 +78,7 @@ function AdminDashboard() {
       ]);
     } catch (error) {
       console.error('Failed to load data:', error);
-      setError('Failed to load data from server');
+      setError('Failed to load data from server. Please check if backend is running.');
     } finally {
       setLoading(false);
     }
@@ -83,24 +86,14 @@ function AdminDashboard() {
 
   const loadStats = async () => {
     try {
-      // Get participants with quiz scores
-      const response = await axios.get(`${API_URL}/api/auth/participants`);
-      const allParticipants = response.data.data || [];
-      
-      // Calculate stats
-      const participantsWithQuiz = allParticipants.filter(p => p.quiz_score !== undefined && p.quiz_score !== null);
-      const scores = participantsWithQuiz.map(p => p.quiz_score);
-      
-      const statsData = {
-        totalParticipants: allParticipants.length,
-        quizTaken: participantsWithQuiz.length,
-        averageScore: scores.length > 0 ? 
-          Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0,
-        topScore: scores.length > 0 ? Math.max(...scores) : 0,
-        loading: false
-      };
-      
-      setStats(statsData);
+      const response = await axios.get(`${API_URL}/admin/dashboard-stats`);
+      if (response.data.success) {
+        setStats({
+          ...response.data.data,
+          loading: false
+        });
+        setQuestionsByEvent(response.data.data.questionsByEvent || []);
+      }
     } catch (error) {
       console.error('Failed to load stats:', error);
       setStats(prev => ({ ...prev, loading: false }));
@@ -109,22 +102,16 @@ function AdminDashboard() {
 
   const loadParticipants = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/auth/participants`);
-      const allParticipants = response.data.data || [];
-      
-      // Filter based on selected event
-      const filtered = selectedEvent === 'All' 
-        ? allParticipants 
-        : allParticipants.filter(p => p.event === selectedEvent);
-      
-      // Sort by quiz score (highest first)
-      const sorted = [...filtered].sort((a, b) => {
-        const scoreA = a.quiz_score || 0;
-        const scoreB = b.quiz_score || 0;
-        return scoreB - scoreA;
+      const response = await axios.get(`${API_URL}/admin/participants`, {
+        params: { 
+          event: selectedEvent === 'All' ? null : selectedEvent,
+          page: 1,
+          limit: 100
+        }
       });
-      
-      setParticipants(sorted);
+      if (response.data.success) {
+        setParticipants(response.data.data || []);
+      }
     } catch (error) {
       console.error('Failed to load participants:', error);
       setParticipants([]);
@@ -133,8 +120,12 @@ function AdminDashboard() {
 
   const loadQuestions = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/admin/questions`);
-      setQuestions(response.data.data || []);
+      const response = await axios.get(`${API_URL}/admin/questions`, {
+        params: { limit: 50 }
+      });
+      if (response.data.success) {
+        setQuestions(response.data.data || []);
+      }
     } catch (error) {
       console.error('Failed to load questions:', error);
       setQuestions([]);
@@ -164,12 +155,16 @@ function AdminDashboard() {
       setOpenDialog(true);
       setCsvFile(null);
       
-      // Refresh questions list
-      loadQuestions();
+      // Refresh data
+      await loadQuestions();
+      await loadStats();
     } catch (error) {
       console.error('Upload failed:', error);
-      setError(error.response?.data?.message || 'Failed to upload questions');
-      setUploadResult({ success: false, message: 'Upload failed' });
+      setError(error.response?.data?.message || 'Failed to upload questions. Check CSV format.');
+      setUploadResult({ 
+        success: false, 
+        message: error.response?.data?.message || 'Upload failed' 
+      });
       setOpenDialog(true);
     } finally {
       setUploading(false);
@@ -184,6 +179,8 @@ function AdminDashboard() {
 
   const handleLogout = () => {
     sessionStorage.removeItem('adminAuthenticated');
+    sessionStorage.removeItem('adminUser');
+    sessionStorage.removeItem('adminLoginTime');
     navigate('/admin/login');
   };
 
@@ -192,31 +189,61 @@ function AdminDashboard() {
   };
 
   const handleExportCSV = () => {
-    // Convert participants data to CSV
-    const csvContent = [
-      ['Team Code', 'Team Name', 'Event', 'Team Lead', 'College', 'Email', 'Phone', 'Quiz Score', 'Quiz Taken', 'Registration Date'].join(','),
-      ...participants.map(p => [
-        p.team_code,
-        `"${p.team_name}"`,
-        p.event,
-        `"${p.team_lead_name}"`,
-        `"${p.college_name}"`,
-        p.email,
-        p.phone_number,
+    if (participants.length === 0) {
+      setError('No participants to export');
+      return;
+    }
+
+    try {
+      // Create CSV content
+      const headers = [
+        'Team Code',
+        'Team Name',
+        'Event',
+        'Team Lead',
+        'College',
+        'Email',
+        'Phone',
+        'Quiz Score',
+        'Quiz Taken',
+        'Registration Date'
+      ];
+
+      const rows = participants.map(p => [
+        p.team_code || '',
+        `"${p.team_name || ''}"`,
+        p.event || '',
+        `"${p.team_lead_name || ''}"`,
+        `"${p.college_name || ''}"`,
+        p.email || '',
+        p.phone_number || '',
         p.quiz_score || 'Not taken',
         p.quiz_taken ? 'Yes' : 'No',
-        new Date(p.registration_date).toLocaleDateString()
-      ].join(','))
-    ].join('\n');
+        p.registration_date ? new Date(p.registration_date).toLocaleDateString() : ''
+      ]);
 
-    // Create download link
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `quiz_results_${selectedEvent}_${Date.now()}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+      const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+
+      // Create download link
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `quiz_results_${selectedEvent}_${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export error:', err);
+      setError('Failed to export CSV');
+    }
+  };
+
+  const handleViewParticipant = (participant) => {
+    // Implement view participant details
+    console.log('View participant:', participant);
+    alert(`View details for ${participant.team_name}`);
   };
 
   if (loading) {
@@ -238,12 +265,15 @@ function AdminDashboard() {
 
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Typography variant="h4">Quiz Administration Dashboard</Typography>
+        <Typography variant="h4" fontWeight="bold" color="primary">
+          Quiz Administration Dashboard
+        </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button 
             variant="outlined" 
             startIcon={<Refresh />}
             onClick={handleRefresh}
+            disabled={loading}
           >
             Refresh
           </Button>
@@ -255,7 +285,7 @@ function AdminDashboard() {
           >
             Export CSV
           </Button>
-          <Button variant="outlined" onClick={handleLogout}>
+          <Button variant="outlined" color="error" onClick={handleLogout}>
             Logout
           </Button>
         </Box>
@@ -263,17 +293,20 @@ function AdminDashboard() {
 
       {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={3}>
-          <Card>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ height: '100%' }}>
             <CardContent>
               <People sx={{ fontSize: 40, color: 'primary.main', mb: 2 }} />
               <Typography variant="h5">{stats.totalParticipants}</Typography>
               <Typography color="textSecondary">Total Registrations</Typography>
+              <Typography variant="caption" color="textSecondary">
+                Across all events
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
-          <Card>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ height: '100%' }}>
             <CardContent>
               <Quiz sx={{ fontSize: 40, color: stats.quizTaken > 0 ? 'success.main' : 'text.disabled', mb: 2 }} />
               <Typography variant="h5">{stats.quizTaken}</Typography>
@@ -286,8 +319,8 @@ function AdminDashboard() {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
-          <Card>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ height: '100%' }}>
             <CardContent>
               <BarChart sx={{ fontSize: 40, color: 'warning.main', mb: 2 }} />
               <Typography variant="h5">{stats.averageScore}%</Typography>
@@ -295,7 +328,7 @@ function AdminDashboard() {
               <LinearProgress 
                 variant="determinate" 
                 value={stats.averageScore} 
-                sx={{ mt: 1, height: 6 }}
+                sx={{ mt: 1, height: 6, borderRadius: 3 }}
                 color={
                   stats.averageScore >= 70 ? 'success' :
                   stats.averageScore >= 50 ? 'warning' : 'error'
@@ -304,15 +337,15 @@ function AdminDashboard() {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
-          <Card>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ height: '100%' }}>
             <CardContent>
               <Typography variant="h4" color="primary" sx={{ mb: 1 }}>{stats.topScore}%</Typography>
               <Typography color="textSecondary">Top Score</Typography>
               <LinearProgress 
                 variant="determinate" 
                 value={stats.topScore} 
-                sx={{ mt: 2, height: 8 }}
+                sx={{ mt: 2, height: 8, borderRadius: 4 }}
                 color="success"
               />
             </CardContent>
@@ -323,8 +356,8 @@ function AdminDashboard() {
       {/* Event Filter and CSV Upload */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={6}>
-          <Paper elevation={3} sx={{ p: 3 }}>
-            <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+          <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
               <FilterList sx={{ mr: 1 }} /> Filter by Event
             </Typography>
             <FormControl fullWidth sx={{ mt: 2 }}>
@@ -333,6 +366,7 @@ function AdminDashboard() {
                 value={selectedEvent}
                 onChange={handleEventChange}
                 label="Select Event"
+                size="small"
               >
                 <MenuItem value="All">All Events</MenuItem>
                 <MenuItem value="InnovWEB">InnovWEB</MenuItem>
@@ -342,14 +376,14 @@ function AdminDashboard() {
               </Select>
             </FormControl>
             <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
-              Showing {participants.length} participants for {selectedEvent}
+              Showing {participants.length} participants for {selectedEvent === 'All' ? 'all events' : selectedEvent}
             </Typography>
           </Paper>
         </Grid>
         
         <Grid item xs={12} md={6}>
-          <Paper elevation={3} sx={{ p: 3 }}>
-            <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+          <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
               <Upload sx={{ mr: 1 }} /> Upload Quiz Questions
             </Typography>
             
@@ -361,6 +395,7 @@ function AdminDashboard() {
                     component="label"
                     fullWidth
                     sx={{ mb: 2 }}
+                    disabled={uploading}
                   >
                     {csvFile ? csvFile.name : 'Choose CSV File'}
                     <input
@@ -386,7 +421,7 @@ function AdminDashboard() {
             </form>
 
             <Box sx={{ mt: 2, bgcolor: 'grey.50', p: 2, borderRadius: 1 }}>
-              <Typography variant="body2" color="textSecondary">
+              <Typography variant="body2" color="textSecondary" gutterBottom>
                 <strong>CSV Format Required:</strong>
               </Typography>
               <Typography variant="caption" color="textSecondary" component="div">
@@ -401,15 +436,16 @@ function AdminDashboard() {
       </Grid>
 
       {/* Participants Table */}
-      <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+      <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h5">
+          <Typography variant="h6" fontWeight="bold">
             Participants & Scores ({participants.length})
           </Typography>
           <Chip 
             label={`${selectedEvent === 'All' ? 'All Events' : selectedEvent}`} 
             color="primary" 
             variant="outlined"
+            size="small"
           />
         </Box>
         
@@ -418,30 +454,37 @@ function AdminDashboard() {
             No participants found for the selected event. Try selecting "All Events".
           </Alert>
         ) : (
-          <TableContainer>
-            <Table>
+          <TableContainer sx={{ maxHeight: 500 }}>
+            <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Team Code</TableCell>
-                  <TableCell>Team Name</TableCell>
-                  <TableCell>Event</TableCell>
-                  <TableCell>Team Lead</TableCell>
-                  <TableCell>College</TableCell>
-                  <TableCell>Quiz Score</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Actions</TableCell>
+                  <TableCell><strong>Team Code</strong></TableCell>
+                  <TableCell><strong>Team Name</strong></TableCell>
+                  <TableCell><strong>Event</strong></TableCell>
+                  <TableCell><strong>Team Lead</strong></TableCell>
+                  <TableCell><strong>College</strong></TableCell>
+                  <TableCell><strong>Quiz Score</strong></TableCell>
+                  <TableCell><strong>Status</strong></TableCell>
+                  <TableCell><strong>Actions</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {participants.map((participant, index) => (
-                  <TableRow key={participant._id || index}>
+                  <TableRow 
+                    key={participant._id || index}
+                    sx={{ 
+                      '&:hover': { 
+                        backgroundColor: 'action.hover' 
+                      } 
+                    }}
+                  >
                     <TableCell>
-                      <Typography variant="body2" fontFamily="monospace">
+                      <Typography variant="body2" fontFamily="monospace" fontWeight="medium">
                         {participant.team_code}
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography fontWeight="medium">
+                      <Typography variant="body2" fontWeight="medium">
                         {participant.team_name}
                       </Typography>
                     </TableCell>
@@ -454,6 +497,7 @@ function AdminDashboard() {
                           participant.event === 'SensorShowDown' ? 'secondary' :
                           participant.event === 'IdeaArena' ? 'success' : 'warning'
                         }
+                        variant="outlined"
                       />
                     </TableCell>
                     <TableCell>{participant.team_lead_name}</TableCell>
@@ -465,13 +509,13 @@ function AdminDashboard() {
                             <LinearProgress 
                               variant="determinate" 
                               value={participant.quiz_score} 
-                              sx={{ width: 100, mr: 2, height: 8 }}
+                              sx={{ width: 80, mr: 2, height: 6, borderRadius: 3 }}
                               color={
                                 participant.quiz_score >= 80 ? 'success' :
                                 participant.quiz_score >= 60 ? 'warning' : 'error'
                               }
                             />
-                            <Typography fontWeight="medium">
+                            <Typography variant="body2" fontWeight="medium">
                               {participant.quiz_score}%
                             </Typography>
                           </>
@@ -488,27 +532,28 @@ function AdminDashboard() {
                           label="Completed" 
                           color="success" 
                           size="small" 
-                          variant="outlined"
+                          variant="filled"
+                          sx={{ fontWeight: 'medium' }}
                         />
                       ) : (
                         <Chip 
                           label="Pending" 
                           color="warning" 
                           size="small" 
-                          variant="outlined"
+                          variant="filled"
+                          sx={{ fontWeight: 'medium' }}
                         />
                       )}
                     </TableCell>
                     <TableCell>
                       <Button 
                         size="small" 
-                        variant="outlined"
-                        onClick={() => {
-                          // View details - you can implement this
-                          console.log('View details:', participant);
-                        }}
+                        variant="text"
+                        color="primary"
+                        onClick={() => handleViewParticipant(participant)}
+                        sx={{ textTransform: 'none' }}
                       >
-                        View
+                        Details
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -520,45 +565,57 @@ function AdminDashboard() {
       </Paper>
 
       {/* Questions Summary */}
-      <Paper elevation={3} sx={{ p: 3 }}>
-        <Typography variant="h5" gutterBottom>
+      <Paper elevation={2} sx={{ p: 3 }}>
+        <Typography variant="h6" fontWeight="bold" gutterBottom>
           Quiz Questions Summary
         </Typography>
         <Grid container spacing={2}>
           <Grid item xs={12} md={4}>
-            <Card variant="outlined">
+            <Card variant="outlined" sx={{ height: '100%' }}>
               <CardContent>
                 <Typography variant="h6">Total Questions</Typography>
-                <Typography variant="h3" color="primary">
-                  {questions.length}
+                <Typography variant="h3" color="primary" fontWeight="bold">
+                  {stats.totalQuestions}
+                </Typography>
+                <Typography variant="caption" color="textSecondary">
+                  Across all events
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} md={8}>
-            <Typography variant="body2" color="textSecondary">
+            <Typography variant="subtitle2" color="textSecondary" gutterBottom>
               Questions by Event:
             </Typography>
-            <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-              {['InnovWEB', 'SensorShowDown', 'IdeaArena', 'Error Erase'].map(event => {
-                const count = questions.filter(q => q.event === event).length;
-                return (
-                  <Chip 
-                    key={event}
-                    label={`${event}: ${count}`}
-                    variant="outlined"
-                    size="small"
-                  />
-                );
-              })}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+              {questionsByEvent.map((eventData, index) => (
+                <Chip 
+                  key={index}
+                  label={`${eventData._id || 'Unknown'}: ${eventData.count}`}
+                  variant="outlined"
+                  size="medium"
+                  color={
+                    eventData._id === 'InnovWEB' ? 'primary' :
+                    eventData._id === 'SensorShowDown' ? 'secondary' :
+                    eventData._id === 'IdeaArena' ? 'success' : 'warning'
+                  }
+                />
+              ))}
+              {questionsByEvent.length === 0 && (
+                <Typography variant="body2" color="textSecondary">
+                  No questions data available
+                </Typography>
+              )}
             </Box>
           </Grid>
         </Grid>
       </Paper>
 
       {/* Upload Result Dialog */}
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
-        <DialogTitle>Upload Result</DialogTitle>
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {uploadResult?.success ? '✅ Upload Successful' : '❌ Upload Failed'}
+        </DialogTitle>
         <DialogContent>
           {uploadResult?.success ? (
             <Alert severity="success" sx={{ mb: 2 }}>
@@ -571,25 +628,34 @@ function AdminDashboard() {
           )}
           {uploadResult?.data && (
             <Box sx={{ mt: 2 }}>
-              <Typography variant="body2">
-                <strong>Details:</strong>
+              <Typography variant="subtitle2" gutterBottom>
+                <strong>Upload Details:</strong>
               </Typography>
               <Typography variant="body2">
-                • Uploaded: {uploadResult.data.count} questions
+                • Questions Uploaded: <strong>{uploadResult.data.count}</strong>
               </Typography>
               <Typography variant="body2">
-                • Event: {uploadResult.data.event}
+                • Event: <strong>{uploadResult.data.event}</strong>
               </Typography>
               {uploadResult.data.sample && (
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  <strong>Sample Question:</strong> {uploadResult.data.sample.question_text.substring(0, 50)}...
-                </Typography>
+                <>
+                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+                    <strong>Sample Question:</strong>
+                  </Typography>
+                  <Paper variant="outlined" sx={{ p: 1, bgcolor: 'grey.50' }}>
+                    <Typography variant="body2">
+                      {uploadResult.data.sample.question_text?.substring(0, 80)}...
+                    </Typography>
+                  </Paper>
+                </>
               )}
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Close</Button>
+          <Button onClick={() => setOpenDialog(false)} variant="contained">
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
     </Container>
