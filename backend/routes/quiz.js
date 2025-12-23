@@ -115,6 +115,7 @@ router.post('/start', async (req, res) => {
 router.post('/submit', async (req, res) => {
   try {
     console.log('📝 Quiz submit request received');
+    console.log('🔍 Answers received:', JSON.stringify(answers, null, 2));
 
     const { session_id, answers } = req.body;
 
@@ -155,8 +156,10 @@ router.post('/submit', async (req, res) => {
       const points = question.points || 10;
       totalPossibleScore += points;
 
-      const isCorrect =
-        question.correct_option === answer.selected_option;
+      // Compare the selected option index with the correct option index
+      const isCorrect = parseInt(answer.selected_option) === parseInt(question.correct_option);
+
+      console.log(`❓ Q: ${question._id} | Selected: ${answer.selected_option} | Correct: ${question.correct_option} | Match: ${isCorrect}`);
 
       if (isCorrect) {
         score += points;
