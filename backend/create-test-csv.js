@@ -11,4 +11,4 @@ const csvContent = `question,option1,option2,option3,option4,correct_option,expl
 fs.writeFileSync('test_questions.csv', csvContent);
 console.log('✅ Created test_questions.csv with 5 sample questions');
 console.log('📋 First question: "What is React?"');
-console.log('📋 Upload command: curl -X POST http://localhost:5000/api/admin/upload-questions -F "csvFile=@test_questions.csv" -F "event=InnovWEB"');
+console.log('📋 Upload command: curl -X POST http://localhost:10000/api/admin/upload-questions -F "csvFile=@test_questions.csv" -F "event=InnovWEB"');

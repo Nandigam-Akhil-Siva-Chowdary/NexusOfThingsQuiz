@@ -50,12 +50,27 @@ function AdminDashboard() {
     loading: true
   });
   const [participants, setParticipants] = useState([]);
-  const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [error, setError] = useState('');
   const [questionsByEvent, setQuestionsByEvent] = useState([]);
+  const [openManualQuestionDialog, setOpenManualQuestionDialog] = useState(false);
+  const [manualQuestionForm, setManualQuestionForm] = useState({
+    event: '',
+    question_text: '',
+    option1: '',
+    option2: '',
+    option3: '',
+    option4: '',
+    correct_option: 0,
+    difficulty: 'medium',
+    category: '',
+    points: 10,
+    time_limit: 30,
+    explanation: ''
+  });
+  const [submittingQuestion, setSubmittingQuestion] = useState(false);
 
   useEffect(() => {
     // Check authentication
@@ -66,6 +81,7 @@ function AdminDashboard() {
     }
     
     loadAllData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
   const loadAllData = async () => {
@@ -123,12 +139,12 @@ function AdminDashboard() {
       const response = await axios.get(`${API_URL}/admin/questions`, {
         params: { limit: 50 }
       });
-      if (response.data.success) {
-        setQuestions(response.data.data || []);
+      // Questions loaded for verification but not stored in state
+      if (!response.data.success) {
+        console.error('Failed to load questions');
       }
     } catch (error) {
       console.error('Failed to load questions:', error);
-      setQuestions([]);
     }
   };
 
@@ -246,6 +262,79 @@ function AdminDashboard() {
     alert(`View details for ${participant.team_name}`);
   };
 
+  const handleManualQuestionChange = (field, value) => {
+    setManualQuestionForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSubmitManualQuestion = async () => {
+    // Validation
+    if (!manualQuestionForm.event) {
+      setError('Please select an event');
+      return;
+    }
+    if (!manualQuestionForm.question_text.trim()) {
+      setError('Please enter the question');
+      return;
+    }
+    if (!manualQuestionForm.option1.trim() || !manualQuestionForm.option2.trim() || 
+        !manualQuestionForm.option3.trim() || !manualQuestionForm.option4.trim()) {
+      setError('Please enter all 4 options');
+      return;
+    }
+
+    setSubmittingQuestion(true);
+    setError('');
+
+    try {
+      const response = await axios.post(`${API_URL}/admin/add-question`, {
+        event: manualQuestionForm.event,
+        question_text: manualQuestionForm.question_text.trim(),
+        options: [
+          manualQuestionForm.option1.trim(),
+          manualQuestionForm.option2.trim(),
+          manualQuestionForm.option3.trim(),
+          manualQuestionForm.option4.trim()
+        ],
+        correct_option: parseInt(manualQuestionForm.correct_option),
+        difficulty: manualQuestionForm.difficulty,
+        category: manualQuestionForm.category,
+        points: parseInt(manualQuestionForm.points),
+        time_limit: parseInt(manualQuestionForm.time_limit),
+        explanation: manualQuestionForm.explanation
+      });
+
+      if (response.data.success) {
+        setOpenManualQuestionDialog(false);
+        setManualQuestionForm({
+          event: '',
+          question_text: '',
+          option1: '',
+          option2: '',
+          option3: '',
+          option4: '',
+          correct_option: 0,
+          difficulty: 'medium',
+          category: '',
+          points: 10,
+          time_limit: 30,
+          explanation: ''
+        });
+        setUploadResult(response.data);
+        setOpenDialog(true);
+        await loadQuestions();
+        await loadStats();
+      }
+    } catch (error) {
+      console.error('Failed to add question:', error);
+      setError(error.response?.data?.message || 'Failed to add question');
+    } finally {
+      setSubmittingQuestion(false);
+    }
+  };
+
   if (loading) {
     return (
       <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -269,6 +358,14 @@ function AdminDashboard() {
           Quiz Administration Dashboard
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="contained"
+            startIcon={<BarChart />}
+            onClick={() => navigate('/admin/results')}
+            sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+          >
+            View Results
+          </Button>
           <Button 
             variant="outlined" 
             startIcon={<Refresh />}
@@ -429,6 +526,43 @@ function AdminDashboard() {
               </Typography>
               <Typography variant="caption" color="textSecondary" component="div">
                 <strong>Note:</strong> correct_option should be 1-4 (1=first option)
+              </Typography>
+            </Box>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+              <Quiz sx={{ mr: 1 }} /> Add Question Manually
+            </Typography>
+            
+            <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+              Manually add quiz questions for each event without using CSV
+            </Typography>
+
+            <Button
+              variant="contained"
+              color="primary"
+              fullWidth
+              onClick={() => setOpenManualQuestionDialog(true)}
+              size="large"
+            >
+              + Add New Question
+            </Button>
+
+            <Box sx={{ mt: 2, bgcolor: 'blue.50', p: 2, borderRadius: 1 }}>
+              <Typography variant="body2" color="textSecondary" gutterBottom>
+                <strong>Features:</strong>
+              </Typography>
+              <Typography variant="caption" color="textSecondary" component="div">
+                ✓ Select event, difficulty level, and category
+              </Typography>
+              <Typography variant="caption" color="textSecondary" component="div">
+                ✓ Add 4 options and mark the correct answer
+              </Typography>
+              <Typography variant="caption" color="textSecondary" component="div">
+                ✓ Set points and time limit per question
               </Typography>
             </Box>
           </Paper>
@@ -655,6 +789,187 @@ function AdminDashboard() {
         <DialogActions>
           <Button onClick={() => setOpenDialog(false)} variant="contained">
             Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Manual Question Dialog */}
+      <Dialog open={openManualQuestionDialog} onClose={() => setOpenManualQuestionDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Quiz Question Manually</DialogTitle>
+        <DialogContent sx={{ mt: 2, maxHeight: '80vh', overflow: 'auto' }}>
+          <Grid container spacing={2}>
+            {/* Event Selection */}
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Select Event *</InputLabel>
+                <Select
+                  value={manualQuestionForm.event}
+                  onChange={(e) => handleManualQuestionChange('event', e.target.value)}
+                  label="Select Event"
+                >
+                  <MenuItem value="InnovWEB">InnovWEB</MenuItem>
+                  <MenuItem value="SensorShowDown">SensorShowDown</MenuItem>
+                  <MenuItem value="IdeaArena">IdeaArena</MenuItem>
+                  <MenuItem value="Error Erase">Error Erase</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Question Text */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Question Text *"
+                multiline
+                rows={3}
+                value={manualQuestionForm.question_text}
+                onChange={(e) => handleManualQuestionChange('question_text', e.target.value)}
+                placeholder="Enter the quiz question"
+              />
+            </Grid>
+
+            {/* Options */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Option 1 *"
+                value={manualQuestionForm.option1}
+                onChange={(e) => handleManualQuestionChange('option1', e.target.value)}
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Option 2 *"
+                value={manualQuestionForm.option2}
+                onChange={(e) => handleManualQuestionChange('option2', e.target.value)}
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Option 3 *"
+                value={manualQuestionForm.option3}
+                onChange={(e) => handleManualQuestionChange('option3', e.target.value)}
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Option 4 *"
+                value={manualQuestionForm.option4}
+                onChange={(e) => handleManualQuestionChange('option4', e.target.value)}
+                size="small"
+              />
+            </Grid>
+
+            {/* Correct Option Selection */}
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" gutterBottom fontWeight="bold">
+                Select Correct Option *
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {['Option 1', 'Option 2', 'Option 3', 'Option 4'].map((opt, idx) => (
+                  <Button
+                    key={idx}
+                    variant={manualQuestionForm.correct_option === idx ? 'contained' : 'outlined'}
+                    color={manualQuestionForm.correct_option === idx ? 'success' : 'inherit'}
+                    size="small"
+                    onClick={() => handleManualQuestionChange('correct_option', idx)}
+                    fullWidth
+                  >
+                    {opt}
+                  </Button>
+                ))}
+              </Box>
+            </Grid>
+
+            {/* Difficulty */}
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Difficulty</InputLabel>
+                <Select
+                  value={manualQuestionForm.difficulty}
+                  onChange={(e) => handleManualQuestionChange('difficulty', e.target.value)}
+                  label="Difficulty"
+                >
+                  <MenuItem value="easy">Easy</MenuItem>
+                  <MenuItem value="medium">Medium</MenuItem>
+                  <MenuItem value="hard">Hard</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Category */}
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Category"
+                value={manualQuestionForm.category}
+                onChange={(e) => handleManualQuestionChange('category', e.target.value)}
+                size="small"
+                placeholder="e.g., Web Development"
+              />
+            </Grid>
+
+            {/* Points */}
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Points"
+                value={manualQuestionForm.points}
+                onChange={(e) => handleManualQuestionChange('points', e.target.value)}
+                size="small"
+                inputProps={{ min: 1, max: 100 }}
+              />
+            </Grid>
+
+            {/* Time Limit */}
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Time Limit (seconds)"
+                value={manualQuestionForm.time_limit}
+                onChange={(e) => handleManualQuestionChange('time_limit', e.target.value)}
+                size="small"
+                inputProps={{ min: 10, max: 300 }}
+              />
+            </Grid>
+
+            {/* Explanation */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Explanation (Optional)"
+                multiline
+                rows={2}
+                value={manualQuestionForm.explanation}
+                onChange={(e) => handleManualQuestionChange('explanation', e.target.value)}
+                placeholder="Why is this the correct answer?"
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Alert severity="info">
+                <strong>Note:</strong> All scores will be normalized to 100 points regardless of individual question points.
+              </Alert>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenManualQuestionDialog(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmitManualQuestion}
+            disabled={submittingQuestion}
+            startIcon={submittingQuestion ? <CircularProgress size={20} /> : <Quiz />}
+          >
+            {submittingQuestion ? 'Adding...' : 'Add Question'}
           </Button>
         </DialogActions>
       </Dialog>

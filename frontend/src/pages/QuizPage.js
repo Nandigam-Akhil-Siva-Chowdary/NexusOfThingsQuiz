@@ -12,22 +12,18 @@ import {
   Radio,
   RadioGroup,
   FormControlLabel,
-  FormControl,
-  LinearProgress,
-  Alert,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   IconButton,
-  Tooltip
+  LinearProgress
 } from '@mui/material';
 import {
   Timer,
   ArrowBack,
   ArrowForward,
-  CheckCircle,
   Fullscreen,
   FullscreenExit,
   ExitToApp
@@ -42,7 +38,6 @@ function QuizPage() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [quizStarted, setQuizStarted] = useState(false);
   const [quizCompleted, setQuizCompleted] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
@@ -83,7 +78,6 @@ function QuizPage() {
     startInitiatedRef.current = true;
 
     setLoading(true);
-    setError('');
 
     try {
       const participantInfo = JSON.parse(
@@ -117,7 +111,7 @@ function QuizPage() {
         });
       }, 1000);
     } catch (err) {
-      setError(err.message || 'Failed to start quiz');
+      console.error('Failed to start quiz:', err);
       startInitiatedRef.current = false;
     } finally {
       setLoading(false);
@@ -137,17 +131,18 @@ function QuizPage() {
       time_spent: 30
     }));
 
-    const res = await axios.post(`${API_URL}/api/quiz/submit`, {
+    await axios.post(`${API_URL}/api/quiz/submit`, {
       session_id: sessionId,
       answers
     });
 
-    sessionStorage.setItem('quizResults', JSON.stringify(res.data));
+    // Don't store results in session storage (so participants can't access them)
+    // Results are already stored in the database for admins to view
     setQuizCompleted(true);
 
     setTimeout(async () => {
       await exitFullscreen();
-      navigate('/results');
+      navigate('/quiz-success');
     }, 2000);
   }, [questions, selectedAnswers, sessionId, navigate]);
 

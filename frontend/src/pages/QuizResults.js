@@ -12,7 +12,7 @@ import {
   LinearProgress,
   Divider
 } from '@mui/material';
-import { EmojiEvents, Score, Timer, CheckCircle } from '@mui/icons-material';
+import { EmojiEvents, Score, CheckCircle } from '@mui/icons-material';
 
 function QuizResults() {
   const navigate = useNavigate();

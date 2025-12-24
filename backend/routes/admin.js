@@ -240,6 +240,78 @@ router.post('/upload-questions', upload.single('csvFile'), async (req, res) => {
     }
 });
 
+// ==================== MANUAL QUESTION ADDITION ====================
+
+// Add a single question manually
+router.post('/add-question', async (req, res) => {
+    try {
+        const {
+            event,
+            question_text,
+            options,
+            correct_option,
+            difficulty,
+            category,
+            points,
+            time_limit,
+            explanation
+        } = req.body;
+
+        // Validation
+        if (!event || !question_text || !Array.isArray(options) || options.length !== 4) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid request. Event, question_text, and 4 options are required.'
+            });
+        }
+
+        if (correct_option === undefined || correct_option < 0 || correct_option > 3) {
+            return res.status(400).json({
+                success: false,
+                message: 'correct_option must be between 0 and 3'
+            });
+        }
+
+        // Create question object
+        const newQuestion = {
+            event: event,
+            question_text: question_text.trim(),
+            options: options.map(opt => opt.trim()),
+            correct_option: parseInt(correct_option),
+            difficulty: difficulty || 'medium',
+            category: category || '',
+            points: parseInt(points) || 10,
+            time_limit: parseInt(time_limit) || 30,
+            explanation: explanation || '',
+            is_active: true,
+            created_at: new Date()
+        };
+
+        // Save to database
+        const result = await Question.create(newQuestion);
+
+        console.log(`✅ Question added manually | Event: ${event} | Question: ${question_text.substring(0, 50)}...`);
+
+        return res.status(201).json({
+            success: true,
+            message: 'Question added successfully',
+            data: {
+                count: 1,
+                event: event,
+                sample: result
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Add question error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to add question',
+            error: error.message
+        });
+    }
+});
+
 // ==================== QUESTIONS MANAGEMENT ====================
 
 // Get all questions for admin
@@ -594,6 +666,89 @@ router.get('/system-health', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to get system health'
+        });
+    }
+});
+
+// ==================== QUIZ RESULTS ====================
+
+// Get all quiz results for admin
+router.get('/quiz-results', async (req, res) => {
+    try {
+        const { event, page = 1, limit = 50 } = req.query;
+        
+        // Build query
+        const query = {};
+        if (event && event !== 'All') query.event = event;
+        
+        const results = await Participant.find(query)
+            .select('team_code team_name team_lead_name event email quiz_score quiz_taken quiz_start_time quiz_end_time quiz_answers college_name')
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit))
+            .sort({ quiz_end_time: -1 });
+        
+        const total = await Participant.countDocuments(query);
+        
+        res.json({
+            success: true,
+            data: results,
+            total: total,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            totalPages: Math.ceil(total / limit)
+        });
+    } catch (error) {
+        console.error('Get quiz results error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch quiz results'
+        });
+    }
+});
+
+// Get specific participant quiz details
+router.get('/quiz-results/:participantId', async (req, res) => {
+    try {
+        const { participantId } = req.params;
+        
+        const participant = await Participant.findById(participantId)
+            .select('team_code team_name team_lead_name event email quiz_score quiz_taken quiz_start_time quiz_end_time quiz_answers college_name');
+        
+        if (!participant) {
+            return res.status(404).json({
+                success: false,
+                message: 'Participant not found'
+            });
+        }
+        
+        // Get detailed answer information with questions
+        let detailedAnswers = [];
+        if (participant.quiz_answers && participant.quiz_answers.length > 0) {
+            detailedAnswers = await Promise.all(
+                participant.quiz_answers.map(async (answer) => {
+                    const question = await Question.findById(answer.question_id);
+                    return {
+                        ...answer,
+                        question_text: question?.question_text,
+                        correct_option: question?.correct_option,
+                        all_options: question?.options
+                    };
+                })
+            );
+        }
+        
+        res.json({
+            success: true,
+            data: {
+                ...participant.toObject(),
+                quiz_answers_detailed: detailedAnswers
+            }
+        });
+    } catch (error) {
+        console.error('Get participant quiz details error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch participant quiz details'
         });
     }
 });

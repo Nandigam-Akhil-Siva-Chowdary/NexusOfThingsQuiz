@@ -85,7 +85,7 @@ function AdminLogin() {
       const response = await axios.get(`${API_URL}/health`);
       alert(`✅ Server is running!\nStatus: ${response.data.status}\nMongoDB: ${response.data.mongodb}`);
     } catch (err) {
-      alert(`❌ Cannot connect to server at ${API_URL}\nPlease make sure backend is running on port 5000.`);
+      alert(`❌ Cannot connect to server at ${API_URL}\nPlease make sure backend is running on port 10000.`);
     } finally {
       setLoading(false);
     }

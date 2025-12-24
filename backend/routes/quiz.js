@@ -115,9 +115,10 @@ router.post('/start', async (req, res) => {
 router.post('/submit', async (req, res) => {
   try {
     console.log('📝 Quiz submit request received');
-    console.log('🔍 Answers received:', JSON.stringify(answers, null, 2));
 
     const { session_id, answers } = req.body;
+
+    console.log('🔍 Answers received:', JSON.stringify(answers, null, 2));
 
     if (!session_id || !Array.isArray(answers)) {
       return res.status(400).json({
@@ -178,11 +179,14 @@ router.post('/submit', async (req, res) => {
       ? Math.round((score / totalPossibleScore) * 100)
       : 0;
 
+    // Normalize score to 100 points (based on percentage)
+    const normalizedScore = Math.round((correctAnswers / answers.length) * 100);
+
     // Update session
     session.end_time = new Date();
     session.questions_attempted = answers.length;
     session.correct_answers = correctAnswers;
-    session.score = score;
+    session.score = normalizedScore; // Store normalized score
     session.time_taken = Math.floor(
       (session.end_time - session.start_time) / 1000
     );
@@ -194,21 +198,21 @@ router.post('/submit', async (req, res) => {
     // Update participant
     await Participant.findByIdAndUpdate(session.participant_id._id, {
       quiz_taken: true,
-      quiz_score: percentageScore,
+      quiz_score: normalizedScore, // Store normalized score
       quiz_start_time: session.start_time,
       quiz_end_time: session.end_time,
       quiz_answers: detailedAnswers
     });
 
     console.log(
-      `✅ Quiz submitted | Session: ${session_id} | Score: ${score}/${totalPossibleScore} (${percentageScore}%)`
+      `✅ Quiz submitted | Session: ${session_id} | Correct: ${correctAnswers}/${answers.length} | Normalized Score: ${normalizedScore}/100`
     );
 
     return res.status(200).json({
       success: true,
-      score: score,
-      total_possible_score: totalPossibleScore,
-      percentage_score: percentageScore,
+      score: normalizedScore,
+      total_possible_score: 100,
+      percentage_score: normalizedScore,
       total_questions: session.total_questions,
       questions_attempted: answers.length,
       correct_answers: correctAnswers,
