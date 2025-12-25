@@ -29,7 +29,7 @@ import {
   ExitToApp
 } from '@mui/icons-material';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://nexus-quiz-backend.onrender.com';
 
 function QuizPage() {
   const navigate = useNavigate();
