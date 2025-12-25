@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -47,11 +47,7 @@ function AdminResults() {
   const [participantDetails, setParticipantDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
-  useEffect(() => {
-    loadResults();
-  }, [selectedEvent]);
-
-  const loadResults = async () => {
+  const loadResults = useCallback(async () => {
     setLoading(true);
     try {
       const response = await axios.get(`${API_URL}/admin/quiz-results`, {
@@ -68,7 +64,11 @@ function AdminResults() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedEvent]);
+
+  useEffect(() => {
+    loadResults();
+  }, [loadResults]);
 
   const loadParticipantDetails = async (participantId) => {
     setDetailsLoading(true);
