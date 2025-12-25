@@ -17,9 +17,11 @@ router.post('/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         
-        // For now, use simple credentials
-        // In production, use proper JWT authentication
-        if (username === 'admin' && password === 'admin123') {
+        // In production, use proper JWT authentication with environment variables
+        const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+        const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+        
+        if (username === adminUsername && password === adminPassword) {
             res.json({
                 success: true,
                 message: 'Login successful',
