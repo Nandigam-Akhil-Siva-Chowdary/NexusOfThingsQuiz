@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import { AdminPanelSettings, LockOpen } from '@mui/icons-material';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:10000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'https://nexus-quiz-backend.onrender.com/api';
 
 function AdminLogin() {
   const [username, setUsername] = useState('');
