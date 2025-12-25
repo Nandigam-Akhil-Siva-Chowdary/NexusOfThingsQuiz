@@ -34,7 +34,7 @@ import {
 import { Upload, BarChart, People, Quiz, Refresh, Download, FilterList } from '@mui/icons-material';
 
 // Use environment variable for API URL
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:10000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'https://nexus-quiz-backend.onrender.com/api';
 
 function AdminDashboard() {
   const navigate = useNavigate();
